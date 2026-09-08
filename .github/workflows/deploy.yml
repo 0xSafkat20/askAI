@@ -38,13 +38,10 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID"; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN"; exit 1; }
           test -n "$D1_DATABASE_ID" || { echo "Missing CLOUDFLARE_D1_DATABASE_ID"; exit 1; }
-          node -e "const fs=require('fs'); const p='dist/server/wrangler.json'; const c=JSON.parse(fs.readFileSync(p)); c.d1_databases[0].database_id=process.env.D1_DATABASE_ID; fs.writeFileSync(p, JSON.stringify(c, null, 2));"
+          node -e "const fs=require('fs'); const p='dist/server/wrangler.json'; const c=JSON.parse(fs.readFileSync(p)); c.d1_databases[0].database_id=process.env.D1_DATABASE_ID; c.d1_databases[0].migrations_dir='../../drizzle'; fs.writeFileSync(p, JSON.stringify(c, null, 2));"
 
       - name: Apply database migrations
-        run: |
-          mkdir -p dist/server/migrations
-          cp drizzle/*.sql dist/server/migrations/
-          npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
+        run: npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
 
       - name: Deploy worker
         run: npx wrangler deploy --config dist/server/wrangler.json
