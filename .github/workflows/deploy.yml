@@ -41,7 +41,10 @@ jobs:
           node -e "const fs=require('fs'); const p='dist/server/wrangler.json'; const c=JSON.parse(fs.readFileSync(p)); c.d1_databases[0].database_id=process.env.D1_DATABASE_ID; fs.writeFileSync(p, JSON.stringify(c, null, 2));"
 
       - name: Apply database migrations
-        run: npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
+        run: |
+          mkdir -p dist/server/migrations
+          cp drizzle/*.sql dist/server/migrations/
+          npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
 
       - name: Deploy worker
         run: npx wrangler deploy --config dist/server/wrangler.json
