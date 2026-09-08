@@ -17,7 +17,7 @@
 ## Needed before a public release
 
 1. Add a Gemini API key in `.env.local` if generated answers are required.
-2. Create the hosted D1 database and R2 file bucket during deployment.
+2. Create the hosted D1 database during deployment.
 3. Configure the production Gemini key as a hosted secret.
 4. Add rate limiting before allowing many public users.
 5. Decide how long uploaded documents and chat history should be retained.

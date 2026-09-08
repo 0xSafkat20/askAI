@@ -10,7 +10,7 @@ askAI is a learning project for uploading PDF, TXT, and Markdown files and askin
 - Source-aware retrieval and chat with loading, empty, success, and error states
 - Suggested learning prompts
 - Persistent D1 records for users, documents, chunks, and the latest 40 chats
-- R2 object-storage configuration for uploaded files
+- D1-only storage for extracted document text and metadata
 - ChatGPT sign-in foundation for hosted user isolation
 - Free local retrieval mode plus optional Gemini answer synthesis
 - Account-level ownership checks on every document and chat operation
@@ -37,7 +37,7 @@ Without a key, askAI still retrieves and displays the most relevant passages. Wi
 
 ## Data model
 
-Structured records use D1/SQLite. Original upload bytes use R2 object storage. Every user-owned record includes a user ID so server routes can enforce ownership. The schema lives in `db/schema.ts`.
+Structured records, extracted document chunks, and chat history use D1/SQLite. Original upload bytes are not retained in cloud storage. Every user-owned record includes a user ID so server routes can enforce ownership. The schema lives in `db/schema.ts`.
 
 ## Security notes
 
@@ -49,4 +49,4 @@ Structured records use D1/SQLite. Original upload bytes use R2 object storage. E
 
 ## Current learning architecture
 
-The browser extracts text from PDF, TXT, and Markdown files. The server validates the upload, stores the original bytes in R2, splits extracted text into overlapping chunks in D1, and ranks those chunks against each question. Gemini is called only when a server-side key exists; the key is never exposed to browser code.
+The browser extracts text from PDF, TXT, and Markdown files. The server validates the upload, stores extracted text as overlapping chunks in D1, and ranks those chunks against each question. Gemini is called only when a server-side key exists; the key is never exposed to browser code.
