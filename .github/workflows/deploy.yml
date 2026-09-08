@@ -47,7 +47,11 @@ jobs:
         run: npx wrangler deploy --config dist/server/wrangler.json
 
       - name: Set Gemini secret
-        if: ${{ secrets.GEMINI_API_KEY != '' }}
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --config dist/server/wrangler.json
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --config dist/server/wrangler.json
+          else
+            echo "GEMINI_API_KEY is not configured; skipping optional secret."
+          fi
