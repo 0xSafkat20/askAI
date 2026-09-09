@@ -5,9 +5,7 @@ type RuntimeEnv = {
   GEMINI_MODEL?: string;
 };
 
-// Vercel exposes environment variables through process.env. The fallback keeps
-// the module compatible with local Worker-style runtimes without importing a
-// Cloudflare-only module into the Vercel bundle.
+// The Node development and production servers read server-only settings here.
 export function runtimeEnv(): RuntimeEnv {
   return (typeof process !== 'undefined' ? process.env : {}) as RuntimeEnv;
 }

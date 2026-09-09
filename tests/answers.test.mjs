@@ -23,7 +23,7 @@ const chunks = [
   },
 ];
 
-test('busy primary model falls back to another Gemini model', async (t) => {
+test('busy primary model is retried without changing model names', async (t) => {
   const urls = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     urls.push(url);
@@ -47,6 +47,8 @@ test('busy primary model falls back to another Gemini model', async (t) => {
   });
   assert.equal(result.mode, 'gemini');
   assert.equal(result.answer, 'Learn Python [notes.txt].');
+  assert.equal(urls.length, 2);
+  assert.ok(urls[0].includes('gemini-2.5-flash'));
   assert.ok(urls[1].includes('gemini-2.5-flash'));
 });
 test('provider outage returns a clean retry message', async (t) => {
@@ -60,7 +62,7 @@ test('provider outage returns a clean retry message', async (t) => {
   assert.match(result.warning, /unavailable/);
   assert.match(result.answer, /could not create the requested summary/i);
 });
-test('invalid key is explained and not retried against other models', async (t) => {
+test('invalid key is explained without trying alternate model names', async (t) => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () =>
     Response.json({}, { status: 403 }),
   );

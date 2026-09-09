@@ -10,7 +10,7 @@
     "dev": "vinext dev",
     "prebuild": "node scripts/sync-pdf-worker.mjs",
     "build": "vinext build",
-    "start": "wrangler dev --config dist/server/wrangler.json",
+    "start": "vinext start",
     "lint": "oxlint app lib tests scripts components/auth-gate.tsx",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit --incremental false",

@@ -125,6 +125,16 @@ function AnswerText({ text }: { text: string }) {
   );
 }
 
+function cleanSavedAnswer(text: string) {
+  return text
+    .replace(
+      /Showing saved document passages instead; you can retry for an AI summary\.?/gi,
+      '',
+    )
+    .replace(/Document passages \(not an AI-generated summary\):?/gi, '')
+    .trim();
+}
+
 async function extractText(file: File) {
   if (!/\.pdf$/i.test(file.name)) return file.text();
 
@@ -215,7 +225,7 @@ function Workspace() {
             { role: 'user' as const, text: item.question },
             {
               role: 'assistant' as const,
-              text: item.answer,
+              text: cleanSavedAnswer(item.answer),
               sources: item.sourceDocumentIds
                 .map((id) => names.get(id))
                 .filter((name): name is string => Boolean(name)),
