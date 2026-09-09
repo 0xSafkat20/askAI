@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AuthGate } from '@/components/auth-gate';
+import { api } from '@/lib/supabase-browser';
 import {
   AlertCircle,
   Check,
   Clock,
+  Download,
   FileText,
   LoaderCircle,
   MessageSquare,
@@ -55,16 +58,83 @@ function formatDate(value: number) {
   });
 }
 
+function AnswerText({ text }: { text: string }) {
+  const sections = text
+    .split(/\n\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return (
+    <div className="answer-content">
+      {sections.map((section, index) => {
+        const lines = section
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const heading = lines[0]?.replace(/^#+\s*/, '');
+        const isSource = /^\[.+\]$/.test(heading || '');
+        const isPassageTitle = /^Document passages(?:\s*\(.*\))?:?$/i.test(
+          heading || '',
+        );
+        const body = isSource || isPassageTitle ? lines.slice(1) : lines;
+        const isList =
+          body.length > 0 && body.every((line) => /^[-*•]\s+/.test(line));
+        const isNumbered =
+          body.length > 0 && body.every((line) => /^\d+[.)]\s+/.test(line));
+        const renderInline = (value: string) =>
+          value.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, partIndex) => {
+            if (part.startsWith('**') && part.endsWith('**'))
+              return <strong key={partIndex}>{part.slice(2, -2)}</strong>;
+            if (part.startsWith('`') && part.endsWith('`'))
+              return <code key={partIndex}>{part.slice(1, -1)}</code>;
+            return part.replace(/\[(?:Source:?\s*)?([^\]]+)\]/gi, '$1');
+          });
+        return (
+          <section
+            className={isSource ? 'answer-source' : 'answer-section'}
+            key={`${index}-${section.slice(0, 20)}`}
+          >
+            {heading &&
+              (isSource || isPassageTitle || section.includes('\n')) && (
+                <h3>
+                  {isSource ? heading.slice(1, -1) : heading.replace(/:$/, '')}
+                </h3>
+              )}
+            {!body.length ? null : isList ? (
+              <ul>
+                {body.map((line) => (
+                  <li key={line}>
+                    {renderInline(line.replace(/^[-*•]\s+/, ''))}
+                  </li>
+                ))}
+              </ul>
+            ) : isNumbered ? (
+              <ol>
+                {body.map((line) => (
+                  <li key={line}>
+                    {renderInline(line.replace(/^\d+[.)]\s+/, ''))}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>{renderInline(body.join(' '))}</p>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 async function extractText(file: File) {
-  if (file.type !== 'application/pdf') return file.text();
+  if (!/\.pdf$/i.test(file.name)) return file.text();
 
   const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-  ).toString();
+  // Served untouched from public: Vite's dev transforms inject window-based
+  // client code into dependency URLs, which cannot run inside a PDF worker.
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
-  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() })
+    .promise;
   const pages: string[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -78,17 +148,15 @@ async function extractText(file: File) {
   return pages.join('\n\n');
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, options);
-  const data = (await response.json().catch(() => ({}))) as T & {
-    error?: string;
-  };
-
-  if (!response.ok) throw new Error(data.error || 'Something went wrong.');
-  return data;
+export default function Home() {
+  return (
+    <AuthGate>
+      <Workspace />
+    </AuthGate>
+  );
 }
 
-export default function Home() {
+function Workspace() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -108,6 +176,7 @@ export default function Home() {
     text: string;
   } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
 
   const selectedDocuments = documents.filter((document) => document.selected);
   const visibleDocuments = useMemo(
@@ -119,32 +188,70 @@ export default function Home() {
   );
 
   useEffect(() => {
-    void loadWorkspace();
+    let active = true;
+    void Promise.all([
+      api<{ documents: Omit<DocumentItem, 'selected'>[] }>('/api/documents'),
+      api<{ history: HistoryItem[] }>('/api/chat/history'),
+    ])
+      .then(([documentData, historyData]) => {
+        if (!active) return;
+        setDocuments(
+          documentData.documents.map((document) => ({
+            ...document,
+            selected: true,
+          })),
+        );
+        setHistory(historyData.history);
+        const names = new Map(
+          documentData.documents.map((document) => [
+            document.id,
+            document.filename,
+          ]),
+        );
+        const restoredMessages: Message[] = historyData.history
+          .slice()
+          .reverse()
+          .flatMap((item) => [
+            { role: 'user' as const, text: item.question },
+            {
+              role: 'assistant' as const,
+              text: item.answer,
+              sources: item.sourceDocumentIds
+                .map((id) => names.get(id))
+                .filter((name): name is string => Boolean(name)),
+              mode: 'gemini' as const,
+            },
+          ]);
+        setMessages(
+          restoredMessages.length
+            ? restoredMessages
+            : [
+                {
+                  role: 'assistant',
+                  text: 'Add a document and ask a question about it.',
+                },
+              ],
+        );
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setNotice({
+          type: 'error',
+          text:
+            error instanceof Error ? error.message : 'Could not load the app.',
+        });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  async function loadWorkspace() {
-    setLoading(true);
-    try {
-      const [documentData, historyData] = await Promise.all([
-        api<{ documents: Omit<DocumentItem, 'selected'>[] }>('/api/documents'),
-        api<{ history: HistoryItem[] }>('/api/chat/history'),
-      ]);
-      setDocuments(
-        documentData.documents.map((document) => ({
-          ...document,
-          selected: true,
-        })),
-      );
-      setHistory(historyData.history);
-    } catch (error) {
-      setNotice({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Could not load the app.',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, answering]);
 
   async function addFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((file) =>
@@ -205,31 +312,53 @@ export default function Home() {
   async function removeDocument(document: DocumentItem) {
     if (!window.confirm(`Delete ${document.filename}?`)) return;
 
-    const previousDocuments = documents;
-    setDocuments((current) => current.filter((item) => item.id !== document.id));
-
     try {
       await api(`/api/documents/${encodeURIComponent(document.id)}`, {
         method: 'DELETE',
       });
+      setDocuments((current) =>
+        current.filter((item) => item.id !== document.id),
+      );
       setNotice({ type: 'success', text: 'Document deleted.' });
     } catch (error) {
-      setDocuments(previousDocuments);
       setNotice({
         type: 'error',
         text:
-          error instanceof Error ? error.message : 'Could not delete the document.',
+          error instanceof Error
+            ? error.message
+            : 'Could not delete the document.',
       });
     }
   }
 
-  async function askQuestion(event: React.FormEvent) {
+  async function downloadDocument(document: DocumentItem) {
+    try {
+      const result = await api<{ url: string }>(
+        `/api/documents/${encodeURIComponent(document.id)}`,
+      );
+      window.location.assign(result.url);
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Download failed.',
+      });
+    }
+  }
+
+  async function askQuestion(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = question.trim();
     if (!value || answering) return;
 
     if (!selectedDocuments.length) {
       setNotice({ type: 'error', text: 'Select at least one document first.' });
+      return;
+    }
+    if (selectedDocuments.length > 20) {
+      setNotice({
+        type: 'error',
+        text: 'Select up to 20 documents per question.',
+      });
       return;
     }
 
@@ -243,6 +372,8 @@ export default function Home() {
         answer: string;
         sources: string[];
         mode: 'local' | 'gemini';
+        warning?: string;
+        historySaved: boolean;
       }>('/api/chat/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -262,10 +393,25 @@ export default function Home() {
         },
       ]);
 
-      const historyData = await api<{ history: HistoryItem[] }>(
-        '/api/chat/history',
-      );
-      setHistory(historyData.history);
+      if (result.warning) setNotice({ type: 'error', text: result.warning });
+      if (result.historySaved) {
+        try {
+          const historyData = await api<{ history: HistoryItem[] }>(
+            '/api/chat/history',
+          );
+          setHistory(historyData.history);
+        } catch {
+          setNotice({
+            type: 'error',
+            text: [
+              result.warning,
+              'Your answer is shown, but the history list could not be refreshed.',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          });
+        }
+      }
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -292,7 +438,8 @@ export default function Home() {
     } catch (error) {
       setNotice({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Could not clear history.',
+        text:
+          error instanceof Error ? error.message : 'Could not clear history.',
       });
     }
   }
@@ -336,18 +483,13 @@ export default function Home() {
       </header>
 
       {notice && (
-        <div className={`notice ${notice.type}`} role="status">
+        <output className={`notice ${notice.type}`}>
           {notice.type === 'error' ? <AlertCircle /> : <Check />}
           <span>{notice.text}</span>
-          {/sign in/i.test(notice.text) && (
-            <a href="/signin-with-chatgpt?return_to=%2F" target="_top">
-              Sign in
-            </a>
-          )}
           <button onClick={() => setNotice(null)} aria-label="Dismiss message">
             <X />
           </button>
-        </div>
+        </output>
       )}
 
       <input
@@ -383,6 +525,7 @@ export default function Home() {
                 )
               }
               onDelete={(document) => void removeDocument(document)}
+              onDownload={(document) => void downloadDocument(document)}
             />
 
             <section className="panel chat-panel" aria-label="Document chat">
@@ -391,7 +534,10 @@ export default function Home() {
                   <h1>Chat</h1>
                   <p>{selectedDocuments.length} document(s) selected</p>
                 </div>
-                <button className="text-button" onClick={() => setView('documents')}>
+                <button
+                  className="text-button"
+                  onClick={() => setView('documents')}
+                >
                   Manage documents
                 </button>
               </div>
@@ -401,14 +547,16 @@ export default function Home() {
                   <article className={`message ${message.role}`} key={index}>
                     <strong>{message.role === 'user' ? 'You' : 'askAI'}</strong>
                     <div>
-                      <p>{message.text}</p>
+                      <AnswerText text={message.text} />
                       {!!message.sources?.length && (
                         <div className="source-list">
                           {message.sources.map((source) => (
                             <span key={source}>{source}</span>
                           ))}
                           <span>
-                            {message.mode === 'gemini' ? 'Gemini' : 'Local search'}
+                            {message.mode === 'gemini'
+                              ? 'Gemini'
+                              : 'Local search'}
                           </span>
                         </div>
                       )}
@@ -421,6 +569,7 @@ export default function Home() {
                     <LoaderCircle className="spin" /> Searching documents...
                   </div>
                 )}
+                <div ref={messageEndRef} aria-hidden="true" />
               </div>
 
               <form className="question-form" onSubmit={askQuestion}>
@@ -471,6 +620,7 @@ export default function Home() {
               )
             }
             onDelete={(document) => void removeDocument(document)}
+            onDownload={(document) => void downloadDocument(document)}
           />
         )}
 
@@ -501,6 +651,7 @@ function DocumentsPanel({
   onUpload,
   onToggle,
   onDelete,
+  onDownload,
 }: {
   compact?: boolean;
   documents: DocumentItem[];
@@ -512,6 +663,7 @@ function DocumentsPanel({
   onUpload: () => void;
   onToggle: (id: string) => void;
   onDelete: (document: DocumentItem) => void;
+  onDownload: (document: DocumentItem) => void;
 }) {
   return (
     <section className={`panel documents-panel ${compact ? 'compact' : ''}`}>
@@ -557,8 +709,12 @@ function DocumentsPanel({
         {!loading && !documents.length && (
           <div className="empty-state">
             <FileText />
-            <strong>{search ? 'No matching documents' : 'No documents yet'}</strong>
-            <span>{search ? 'Try another search.' : 'Upload a file to get started.'}</span>
+            <strong>
+              {search ? 'No matching documents' : 'No documents yet'}
+            </strong>
+            <span>
+              {search ? 'Try another search.' : 'Upload a file to get started.'}
+            </span>
           </div>
         )}
 
@@ -568,6 +724,7 @@ function DocumentsPanel({
               className={`select-button ${document.selected ? 'selected' : ''}`}
               onClick={() => onToggle(document.id)}
               aria-label={`${document.selected ? 'Deselect' : 'Select'} ${document.filename}`}
+              aria-pressed={document.selected}
             >
               {document.selected && <Check />}
             </button>
@@ -580,6 +737,13 @@ function DocumentsPanel({
             </div>
             <button
               className="delete-button"
+              onClick={() => onDownload(document)}
+              aria-label={`Download ${document.filename}`}
+            >
+              <Download />
+            </button>
+            <button
+              className="delete-button"
               onClick={() => onDelete(document)}
               aria-label={`Delete ${document.filename}`}
             >
@@ -589,7 +753,10 @@ function DocumentsPanel({
         ))}
       </div>
 
-      <p className="file-help">Maximum file size: 10 MB.</p>
+      <p className="file-help">
+        Up to 10 MB and 400,000 text characters per file. Select up to 20 files
+        per question.
+      </p>
     </section>
   );
 }
@@ -605,7 +772,9 @@ function HistoryPanel({
   onClear: () => void;
   onAskAgain: (question: string) => void;
 }) {
-  const names = new Map(documents.map((document) => [document.id, document.filename]));
+  const names = new Map(
+    documents.map((document) => [document.id, document.filename]),
+  );
 
   return (
     <section className="panel history-panel">
@@ -642,7 +811,9 @@ function HistoryPanel({
                 .map((name) => (
                   <span key={name}>{name}</span>
                 ))}
-              <button onClick={() => onAskAgain(item.question)}>Ask again</button>
+              <button onClick={() => onAskAgain(item.question)}>
+                Ask again
+              </button>
             </div>
           </article>
         ))}

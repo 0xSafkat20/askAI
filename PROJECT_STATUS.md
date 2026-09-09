@@ -1,26 +1,22 @@
-# askAI project status
+# askAI status
 
-## Ready now
+## Implemented
+- Supabase email/password signup, signin, persistent sessions, and signout
+- Postgres documents, chunks, and saved question/answer history
+- Private Supabase Storage for original PDF/TXT/MD files
+- Owner-scoped APIs and Row Level Security
+- Signed downloads, document deletion, and history clearing
+- Browser text extraction with explicit limits
+- Postgres lexical retrieval and optional Gemini synthesis
+- Cloudflare deployment without D1
 
-- Account-based local sign-in
-- PDF, TXT, and Markdown upload
-- File validation and a 10 MB limit
-- PDF and text extraction in the browser
-- Document storage and searchable chunks
-- Document selection, search, and deletion
-- Local source retrieval without a paid API
-- Optional Gemini-generated answers
-- Saved chat history and clear-history control
-- Desktop and mobile layouts
-- Server-side ownership checks
+## Required setup
+- Create a Supabase project and apply supabase/migrations/202609090001_initial.sql.
+- Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to .env.local.
+- Configure authentication URLs and email confirmation.
+- Test real sign-in, uploads, downloads, and isolation using two accounts.
 
-## Needed before a public release
-
-1. Add a Gemini API key in `.env.local` if generated answers are required.
-2. Create the hosted D1 database during deployment.
-3. Configure the production Gemini key as a hosted secret.
-4. Add rate limiting before allowing many public users.
-5. Decide how long uploaded documents and chat history should be retained.
-6. Add automated browser tests to CI when this becomes a maintained project.
-
-The application works locally without Gemini by returning the most relevant document passages.
+## Remaining
+- Existing D1 data needs a separate migration with identity mapping.
+- Public-launch rate limits, quotas, retention policy, and browser end-to-end tests.
+- Existing shared UI lint issues.

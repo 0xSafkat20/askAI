@@ -1,57 +1,52 @@
 name: Deploy to Cloudflare
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build worker
-        run: npm run build
-
-      - name: Configure Cloudflare resources
-        shell: bash
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Configure Supabase runtime
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID"; exit 1; }
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN"; exit 1; }
-          test -n "$D1_DATABASE_ID" || { echo "Missing CLOUDFLARE_D1_DATABASE_ID"; exit 1; }
-          node -e "const fs=require('fs'); const p='dist/server/wrangler.json'; const c=JSON.parse(fs.readFileSync(p)); c.d1_databases[0].database_id=process.env.D1_DATABASE_ID; c.d1_databases[0].migrations_dir='../../drizzle'; fs.writeFileSync(p, JSON.stringify(c, null, 2));"
-
-      - name: Apply database migrations
-        run: npx wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json
-
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = process.env;
+          if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error('Set Supabase repository secrets before deploying.');
+          if (!SUPABASE_PUBLISHABLE_KEY.startsWith('sb_publishable_')) {
+            let role;
+            try { role = JSON.parse(Buffer.from(SUPABASE_PUBLISHABLE_KEY.split('.')[1], 'base64url')).role; } catch {}
+            if (role !== 'anon') throw new Error('Only a publishable or legacy anon key is allowed.');
+          }
+          const path = 'dist/server/wrangler.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          config.vars = { ...config.vars, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY };
+          fs.writeFileSync(path, JSON.stringify(config, null, 2));
+          NODE
+      # Apply supabase/migrations SQL to Supabase before this workflow.
       - name: Deploy worker
         run: npx wrangler deploy --config dist/server/wrangler.json
-
-      - name: Set Gemini secret
+      - name: Set optional Gemini secret
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           if [ -n "$GEMINI_API_KEY" ]; then
             printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --config dist/server/wrangler.json
-          else
-            echo "GEMINI_API_KEY is not configured; skipping optional secret."
           fi

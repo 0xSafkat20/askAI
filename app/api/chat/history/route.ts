@@ -1,18 +1,20 @@
-import { env } from 'cloudflare:workers';
-import { jsonError, requireApiUser } from '@/lib/server-data';
-
-export async function GET() {
-  const user = await requireApiUser();
-  if (!user) return jsonError('Please sign in to view chat history.', 401);
-  const rows = await env.DB.prepare(`SELECT id, question, answer, source_document_ids AS sourceDocumentIds,
-    created_at AS createdAt FROM chats WHERE user_id = ? ORDER BY created_at DESC LIMIT 40`)
-    .bind(user.userId).all<{ id: string; question: string; answer: string; sourceDocumentIds: string; createdAt: number }>();
-  return Response.json({ history: rows.results.map(row => ({ ...row, sourceDocumentIds: JSON.parse(row.sourceDocumentIds) })) });
-}
-
-export async function DELETE() {
-  const user = await requireApiUser();
-  if (!user) return jsonError('Please sign in to clear chat history.', 401);
-  await env.DB.prepare('DELETE FROM chats WHERE user_id = ?').bind(user.userId).run();
+import { apiRoute, requireApiUser } from '@/lib/supabase-server';
+export const GET = apiRoute(async (request) => {
+  const { userId, supabase } = await requireApiUser(request);
+  const { data, error } = await supabase
+    .from('chats')
+    .select(
+      'id, question, answer, sourceDocumentIds:source_document_ids, createdAt:created_at',
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(40);
+  if (error) throw error;
+  return Response.json({ history: data });
+});
+export const DELETE = apiRoute(async (request) => {
+  const { userId, supabase } = await requireApiUser(request);
+  const { error } = await supabase.from('chats').delete().eq('user_id', userId);
+  if (error) throw error;
   return Response.json({ deleted: true });
-}
+});

@@ -1,5 +1,1 @@
-declare namespace Cloudflare {
-  interface Env {
-    DB: D1Database;
-  }
-}
+/// <reference types="vite/client" />
