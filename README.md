@@ -8,10 +8,10 @@ Upload PDF, TXT, and Markdown documents, save their original files, and ask ques
 2. Open its SQL Editor and run `supabase/migrations/202609090001_initial.sql` once. This creates the Postgres tables, functions, ownership policies, and private `documents` storage bucket.
 3. Copy `.env.example` to `.env.local`. Set `SUPABASE_URL` to the project URL and `SUPABASE_PUBLISHABLE_KEY` to the publishable key from the project's API settings. The legacy anon key also works. Never use a secret or service-role key.
 4. In Supabase Authentication, enable Email/password sign-in. Set Site URL to `http://localhost:3000` for local development and allow that origin as an authentication redirect URL. Add your deployed URL before deploying. Email confirmation can remain enabled; users must follow the confirmation email before signing in.
-5. Run `npm install`, then `npm run dev` (Node 22.13+). Open the printed local URL, create an account, confirm the email, and sign in.
+5. Run `npm ci`, then `npm run dev` (Node 22, latest patch). Open the printed local URL, create an account, confirm the email, and sign in.
 6. Upload a file, ask a question, reload to verify saved history, and use the document's download button to retrieve its original.
 
-If a `.dev.vars` file already exists, Wrangler may prefer it over `.env.local`; keep the runtime variables together in that file instead. Restart development after changing configuration.
+Local development reads `.env.local`. Vercel reads its project environment variables. Restart development after changing configuration.
 
 The project code is ready to connect, but it cannot create your remote Supabase project or apply SQL without access to your account.
 
@@ -30,7 +30,7 @@ The project code is ready to connect, but it cannot create your remote Supabase 
 
 ## Optional Gemini
 
-Set `GEMINI_API_KEY` and optionally `GEMINI_MODEL` in the runtime environment to enable generated answers. Without a key, askAI returns document passages. The Gemini key stays server-side. Verify model availability for your account; provider errors are shown in the app.
+Set `GEMINI_API_KEY` and optionally `GEMINI_MODEL` in the runtime environment to enable generated answers. Without a working provider, the API returns an error without saving it as an answer. The Gemini key stays server-side.
 
 ## Verification
 
@@ -45,7 +45,7 @@ For a real project, also test two Supabase accounts: each should see only their 
 
 ### Deploy to Vercel (recommended for this Supabase version)
 
-Import the repository in Vercel and keep the detected Node.js version at 22 or newer. Add these Environment Variables for Preview and Production:
+Import the repository in Vercel, select Other as the framework, and use Node.js 22. The checked-in Vercel configuration runs `npm run build:vercel`, using Nitro to package Vinext into Vercel Functions and static assets. Add these Environment Variables for Preview and Production:
 
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
@@ -56,9 +56,7 @@ Apply the Supabase SQL migration before the first upload. In Supabase Authentica
 
 The Vercel build uses the same server API routes and Supabase Row Level Security. Do not add a Supabase service-role key to Vercel or the browser.
 
-The app still runs on Cloudflare Workers; Supabase replaces D1 and supplies storage/authentication.
-
-Apply the SQL migration to Supabase first. Set GitHub repository secrets `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY`. Optionally set `GEMINI_API_KEY`. The workflow validates, builds, and deploys without D1 bindings or migrations. Supabase URL and publishable key are intentionally public client configuration; never put an admin key there.
+GitHub Actions runs checks and a Vercel build. It does not deploy to Cloudflare or require Supabase repository secrets. Deployment is handled separately through Vercel.
 
 Configure Supabase's production Site URL, redirect allowlist, and email delivery settings for your domain. Before a public launch add request/rate limits, user storage quotas, and an explicit retention policy.
 

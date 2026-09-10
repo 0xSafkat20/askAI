@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-test('API refreshes a rejected session once and does not retry failed uploads', async (t) => {
+await test('API refreshes a rejected session once and does not retry failed uploads', async (t) => {
   const source = await readFile(new URL('../lib/supabase-browser.ts', import.meta.url), 'utf8');
   let refreshes = 0;
   const client = { auth: {

@@ -1,5 +1,7 @@
 # askAI project analysis
 
+> Historical review from 9 September, before the Supabase migration. Findings below describe that earlier version, not the current code. See README.md and PROJECT_STATUS.md for the current architecture and setup. The app now stores original files in Supabase Storage, verifies Supabase sessions, runs automated tests, and builds for Vercel through Nitro.
+
 Reviewed 9 September 2026. Scope: application source, API routes, authentication helper, database schema and migration, styling, configuration, dependency manifest, documentation, and deployment workflow. Shared UI components were included in static checks; this was not an exhaustive audit of third-party dependencies.
 
 ## Assessment

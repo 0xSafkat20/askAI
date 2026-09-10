@@ -1,7 +1,8 @@
 import { sites } from '@openai/sites-vite-plugin';
-import tailwindcss from '@tailwindcss/postcss';
+import tailwindcss from '@tailwindcss/vite';
 import vinext from 'vinext';
 import { defineConfig, loadEnv } from 'vite';
+import { nitro } from 'nitro/vite';
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
@@ -22,10 +23,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    css: { postcss: { plugins: [tailwindcss()] } },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
-    plugins: [vinext(), sites()],
+    plugins: [tailwindcss(), vinext(), ...(process.env.NITRO_PRESET === 'vercel' || process.env.VERCEL ? [nitro({ preset: 'vercel' })] : [sites()])],
   };
 });

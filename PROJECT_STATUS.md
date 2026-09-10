@@ -8,7 +8,7 @@
 - Signed downloads, document deletion, and history clearing
 - Browser text extraction with explicit limits
 - Postgres lexical retrieval and optional Gemini synthesis
-- Cloudflare deployment without D1
+- Vercel build using Vinext and Nitro; deployment awaits account authorization
 
 ## Required setup
 - Create a Supabase project and apply supabase/migrations/202609090001_initial.sql.
@@ -20,3 +20,4 @@
 - Existing D1 data needs a separate migration with identity mapping.
 - Public-launch rate limits, quotas, retention policy, and browser end-to-end tests.
 - Existing shared UI lint issues.
+- Vercel function request-size limits apply to multipart uploads; the 10 MB application limit does not override the hosting limit.

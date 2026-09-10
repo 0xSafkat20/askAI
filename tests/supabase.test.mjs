@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 import { PGlite } from '@electric-sql/pglite';
 
-test('chunking preserves the end of long documents and respects chunk size', async () => {
+await test('chunking preserves the end of long documents and respects chunk size', async () => {
   const source = await readFile(
     new URL('../lib/server-data.ts', import.meta.url),
     'utf8',
@@ -25,7 +25,7 @@ test('chunking preserves the end of long documents and respects chunk size', asy
   assert.deepEqual(splitIntoChunks('  \n '), []);
 });
 
-test('Supabase migration: atomic saves, retrieval and tenant policies', async (t) => {
+await test('Supabase migration: atomic saves, retrieval and tenant policies', async (t) => {
   const db = new PGlite();
   t.after(() => db.close());
   // Model Supabase-owned auth/storage schemas; the real migration is applied unchanged.

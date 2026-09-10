@@ -44,6 +44,9 @@ export const POST = apiRoute(async (request) => {
     model: env.GEMINI_MODEL,
   });
   const { answer } = result;
+  if (result.mode !== 'gemini') {
+    throw new ApiError(result.warning || 'No AI answer was generated. Please retry.', 503);
+  }
   const sourceIds = [...new Set(ranked.map((chunk) => chunk.documentId))];
   let historySaved = false;
   try {

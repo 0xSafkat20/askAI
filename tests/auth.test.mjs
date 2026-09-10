@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-test('API verifies bearer tokens, ignores identity headers, and protects configuration', async (t) => {
+await test('API verifies bearer tokens, ignores identity headers, and protects configuration', async (t) => {
   const source = await readFile(
     new URL('../lib/supabase-server.ts', import.meta.url),
     'utf8',

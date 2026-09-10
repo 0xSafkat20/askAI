@@ -23,7 +23,7 @@ const chunks = [
   },
 ];
 
-test('busy primary model is retried without changing model names', async (t) => {
+await test('busy primary model is retried without changing model names', async (t) => {
   const urls = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     urls.push(url);
@@ -51,7 +51,7 @@ test('busy primary model is retried without changing model names', async (t) => 
   assert.ok(urls[0].includes('gemini-3.6-flash'));
   assert.ok(urls[1].includes('gemini-3.6-flash'));
 });
-test('retired model retries the current default and normalizes model prefixes', async (t) => {
+await test('retired model retries the current default and normalizes model prefixes', async (t) => {
   const urls = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     urls.push(url);
@@ -65,14 +65,14 @@ test('retired model retries the current default and normalizes model prefixes', 
   assert.equal(urls.length, 2);
 });
 
-test('unavailable default does not retry forever', async (t) => {
+await test('unavailable default does not retry forever', async (t) => {
   const mock = t.mock.method(globalThis, 'fetch', async () => Response.json({}, { status: 404 }));
   const result = await generateAnswer('Summarize', chunks, { apiKey: 'test' });
   assert.equal(result.mode, 'local');
   assert.equal(mock.mock.callCount(), 1);
 });
 
-test('provider outage returns a clean retry message', async (t) => {
+await test('provider outage returns a clean retry message', async (t) => {
   t.mock.method(globalThis, 'fetch', async () =>
     Response.json({}, { status: 503 }),
   );
@@ -83,7 +83,7 @@ test('provider outage returns a clean retry message', async (t) => {
   assert.match(result.warning, /unavailable/);
   assert.match(result.answer, /could not create the requested summary/i);
 });
-test('invalid key is explained without trying alternate model names', async (t) => {
+await test('invalid key is explained without trying alternate model names', async (t) => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () =>
     Response.json({}, { status: 403 }),
   );
@@ -94,7 +94,7 @@ test('invalid key is explained without trying alternate model names', async (t) 
   assert.match(result.warning, /API key/);
   assert.equal(fetchMock.mock.callCount(), 1);
 });
-test('history failure does not discard the answer', async () => {
+await test('history failure does not discard the answer', async () => {
   let route = compile(
     await readFile(
       new URL('../app/api/chat/query/route.ts', import.meta.url),
@@ -121,7 +121,7 @@ test('history failure does not discard the answer', async () => {
       }});
     `,
     )
-    .replace(/['"]@\/lib\/answers['"]/, JSON.stringify(answerUrl));
+    .replace(/import \{[^}]+\} from ['"]@\/lib\/answers['"];?/, "const generateAnswer = async () => ({answer: 'Generated summary', mode: 'gemini'});");
   const { POST } = await import(
     'data:text/javascript;base64,' + Buffer.from(route).toString('base64')
   );
@@ -138,5 +138,23 @@ test('history failure does not discard the answer', async () => {
   assert.equal(response.status, 200);
   assert.equal(result.historySaved, false);
   assert.match(result.warning, /could not be saved/);
-  assert.match(result.answer, /could not create the requested summary/i);
+  assert.equal(result.answer, 'Generated summary');
+});
+
+await test('failed generation is rejected before saving chat history', async () => {
+  let route = compile(await readFile(new URL('../app/api/chat/query/route.ts', import.meta.url), 'utf8'));
+  route = route
+    .replace(/import \{[^}]+\} from ['"]@\/lib\/supabase-server['"];?/, `
+      class ApiError extends Error {}
+      const apiRoute = handler => handler;
+      const requireApiUser = async () => ({userId:'test', supabase: {
+        rpc: async () => ({data: ${JSON.stringify(chunks)}}),
+        from: () => { throw new Error('Unexpected history write'); }
+      }});`)
+    .replace(/import \{ runtimeEnv \} from ['"]@\/lib\/runtime-env['"];?/, 'const runtimeEnv = () => ({});')
+    .replace(/import \{[^}]+\} from ['"]@\/lib\/answers['"];?/, "const generateAnswer = async () => ({answer:'Unavailable', mode:'local', warning:'Provider unavailable'});");
+  const { POST } = await import('data:text/javascript;base64,' + Buffer.from(route).toString('base64'));
+  await assert.rejects(POST(new Request('http://localhost/api/chat/query', {
+    method:'POST', body:JSON.stringify({question:'Summarize', documentIds:[chunks[0].documentId]})
+  })), /Provider unavailable/);
 });
