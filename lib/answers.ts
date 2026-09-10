@@ -1,6 +1,6 @@
 export type Chunk = { documentId: string; filename: string; content: string };
 type Options = { apiKey?: string; model?: string };
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.6-flash';
 export type Answer = {
   answer: string;
   mode: 'local' | 'gemini';
@@ -28,7 +28,7 @@ export async function generateAnswer(
   const context = chunks
     .map((chunk) => `[Source: ${chunk.filename}]\n${chunk.content}`)
     .join('\n\n');
-  const model = options.model || DEFAULT_MODEL;
+  const model = options.model?.trim().replace(/^models\//, '') || DEFAULT_MODEL;
   let reason = 'AI generation is temporarily unavailable.';
 
   try {
@@ -72,6 +72,11 @@ export async function generateAnswer(
     }
     if (!response) throw new Error('No Gemini response');
     if (!response.ok) {
+      // Old deployment settings can reference a model Google has retired.
+      // Retry once with the verified default, never on key or quota errors.
+      if (response.status === 404 && model !== DEFAULT_MODEL) {
+        return generateAnswer(question, chunks, { ...options, model: DEFAULT_MODEL });
+      }
       console.warn('Gemini generation rejected', {
         model,
         status: response.status,

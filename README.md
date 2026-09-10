@@ -50,7 +50,7 @@ Import the repository in Vercel and keep the detected Node.js version at 22 or n
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 - `GEMINI_API_KEY` (optional)
-- `GEMINI_MODEL` (optional; defaults to `gemini-2.5-flash`)
+- `GEMINI_MODEL` (optional; defaults to `gemini-3.6-flash`). If an older configured model returns 404, the app retries with this default.
 
 Apply the Supabase SQL migration before the first upload. In Supabase Authentication URL Configuration, set the production Site URL to your Vercel domain and add that domain to the redirect allowlist. Deploy with the Vercel dashboard or `npx vercel --prod`.
 

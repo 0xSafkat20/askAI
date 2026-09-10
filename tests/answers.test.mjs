@@ -48,9 +48,30 @@ test('busy primary model is retried without changing model names', async (t) => 
   assert.equal(result.mode, 'gemini');
   assert.equal(result.answer, 'Learn Python [notes.txt].');
   assert.equal(urls.length, 2);
-  assert.ok(urls[0].includes('gemini-2.5-flash'));
-  assert.ok(urls[1].includes('gemini-2.5-flash'));
+  assert.ok(urls[0].includes('gemini-3.6-flash'));
+  assert.ok(urls[1].includes('gemini-3.6-flash'));
 });
+test('retired model retries the current default and normalizes model prefixes', async (t) => {
+  const urls = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    urls.push(url);
+    return urls.length === 1 ? Response.json({}, { status: 404 })
+      : Response.json({ candidates: [{ content: { parts: [{ text: 'Working summary' }] } }] });
+  });
+  const result = await generateAnswer('Summarize', chunks, { apiKey: 'test', model: ' models/gemini-2.5-flash ' });
+  assert.equal(result.answer, 'Working summary');
+  assert.ok(urls[0].endsWith('/gemini-2.5-flash:generateContent'));
+  assert.ok(urls[1].endsWith('/gemini-3.6-flash:generateContent'));
+  assert.equal(urls.length, 2);
+});
+
+test('unavailable default does not retry forever', async (t) => {
+  const mock = t.mock.method(globalThis, 'fetch', async () => Response.json({}, { status: 404 }));
+  const result = await generateAnswer('Summarize', chunks, { apiKey: 'test' });
+  assert.equal(result.mode, 'local');
+  assert.equal(mock.mock.callCount(), 1);
+});
+
 test('provider outage returns a clean retry message', async (t) => {
   t.mock.method(globalThis, 'fetch', async () =>
     Response.json({}, { status: 503 }),

@@ -199,12 +199,22 @@ function Workspace() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
+    void Promise.allSettled([
       api<{ documents: Omit<DocumentItem, 'selected'>[] }>('/api/documents'),
       api<{ history: HistoryItem[] }>('/api/chat/history'),
     ])
-      .then(([documentData, historyData]) => {
+      .then(([documentResult, historyResult]) => {
         if (!active) return;
+        const failures = [documentResult, historyResult].flatMap((result) =>
+          result.status === 'rejected'
+            ? [result.reason instanceof Error ? result.reason.message : 'Could not load saved data.']
+            : [],
+        );
+        if (failures.length) setNotice({ type: 'error', text: failures.join(' ') });
+        const documentData = documentResult.status === 'fulfilled'
+          ? documentResult.value : { documents: [] };
+        const historyData = historyResult.status === 'fulfilled'
+          ? historyResult.value : { history: [] };
         setDocuments(
           documentData.documents.map((document) => ({
             ...document,
@@ -276,6 +286,7 @@ function Workspace() {
     setUploading(true);
     setNotice(null);
     let uploadedCount = 0;
+    const uploadErrors: string[] = [];
 
     for (const file of files) {
       try {
@@ -298,17 +309,13 @@ function Workspace() {
         ]);
         uploadedCount += 1;
       } catch (error) {
-        setNotice({
-          type: 'error',
-          text:
-            error instanceof Error
-              ? error.message
-              : `Could not upload ${file.name}.`,
-        });
+        uploadErrors.push(`${file.name}: ${error instanceof Error ? error.message : 'Upload failed.'}`);
       }
     }
 
-    if (uploadedCount) {
+    if (uploadErrors.length) {
+      setNotice({ type: 'error', text: `${uploadedCount} file(s) uploaded. ${uploadErrors.join(' ')}` });
+    } else if (uploadedCount) {
       setNotice({
         type: 'success',
         text: `${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded.`,

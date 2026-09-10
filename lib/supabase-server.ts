@@ -40,7 +40,13 @@ export async function requireApiUser(request: Request | undefined) {
   if (!token) throw new ApiError('Please sign in to continue.', 401);
   const { url, key } = supabaseConfig();
   const supabase = createClient(url, key, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: {
+      headers: { Authorization: `Bearer ${token}` },
+      fetch: (input, init) => fetch(input, {
+        ...init,
+        signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+      }),
+    },
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -48,6 +54,8 @@ export async function requireApiUser(request: Request | undefined) {
     },
   });
   const { data, error } = await supabase.auth.getUser(token);
+  if (error && (!error.status || error.status === 429 || error.status >= 500))
+    throw new ApiError('The authentication service could not be reached or is busy. Please retry shortly.', 503);
   if (error || !data.user)
     throw new ApiError('Your session has expired. Please sign in again.', 401);
   return { userId: data.user.id, supabase };
